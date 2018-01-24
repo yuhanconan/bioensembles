@@ -1,6 +1,6 @@
 rm(list=ls())
 
-devtools::install_github("merrillrudd/LIME", dependencies=TRUE)
+devtools::install_github("merrillrudd/LIME", dependencies=TRUE, ref="master")
 library(LIME)
 
 library(FishLife)
@@ -46,18 +46,6 @@ cov <- sp[[1]]$Cov_pred
 mpf <- sp[[3]]$Mean_pred
 covf <- sp[[3]]$Cov_pred
 
-### from life history studies, Adams and Rios 2015
-study_vec <- c(NA, "Puerto Rico", "Cuba", "GOM", "GOM", "GOM", "GOM", NA, "Dry Tortugas", "FL Keys", "S. Florida", "GOM", "Marquesas Key FL", "S. Florida", "GOM", "GOM", "Florida", "W. Florida", "SE US")
-loo_vec <- c(566, 913, 850, 966, NA, 381, 896, 566, 651, 336, 428, 917, 397, 448, 939, NA, NA, 849, NA)
-vbk_vec <- c(0.19, 0.08, 0.10, 0.08, NA, 0.56, 0.09, 0.19, 0.11, 0.56, 0.26, 0.08, 0.17, 0.23, 0.07, NA, NA, 0.11, NA)
-t0_vec <- c(-0.78, -1.78, -1.38, -1.77, NA, -0.16, -1.98, -2.33, -3.34, -0.19, -0.93, -1.84, -3.74, -1.02, -2.01, NA, NA, -1.33, NA)
-M_vec <- c(0.25, 0.13, rep(NA, 16), mean(c(0.16,0.29)))
-Lm_vec <- c(NA, 249, NA, 152, 152, NA, NA, 198, NA, NA, NA, NA, NA, 163, 166, 177, NA, NA, mean(c(152, 193)))
-
-lhstudies <- data.frame("Location"=study_vec, "Loo"=loo_vec, "K"=vbk_vec, "t0"=t0_vec, "M"=M_vec, "Lm"=Lm_vec)
-
-a_vec <- c(2.55e-5, 1.52e-2, 2.37e-2, 9.5e-5)
-b_vec <- c(2.97, 3.11, 2.95, 2.75)
 ###############################
 ## 2 parameters
 ###############################
@@ -70,12 +58,11 @@ CovMK <- cov[which(rownames(cov) %in% paramMK), which(colnames(cov) %in% paramMK
 gridMK <- createNIGrid(dim=2, type="GHe", level=4,  ndConstruction="sparse")
 rescale(gridMK, m=MeanMK, C=(CovMK+t(CovMK))/2, dec.type=1)
 
-## local studies
 
 png(file.path(figs, "MK_dist.png"), width=10, height=8, units="in", res=200)
 par(mfrow=c(1,1))
 plot(gridMK, xlab="log(k)", ylab="log(M)", pch=19, cex=1.5)
-abline(h=log(lhstudies$M)[-which(is.na(lhstudies$M))][1], col="blue", lty=3)
+# abline(h=log(lhstudies$M)[-which(is.na(lhstudies$M))][1], col="blue", lty=3)
 dev.off()
 
 nodesMK <- getNodes(gridMK)
@@ -232,6 +219,83 @@ stopCluster(cl)
 #########################
 ## results
 #########################
+	### figure 3 - visual summary of predictive stacking method
+png(file.path(figs, "Predictive_stacking.png"), height=8, width=10, res=200, units="in")
+par(mfrow=c(3,2), mar=c(0,0,0,0), omi=c(1,1,1,1))
+col <- brewer.pal(3, "Set1")
+plot_iter <- 1:3
+for(i in 1:length(plot_iter)){
+	choose_iter=plot_iter[i]
+	res <- readRDS(file.path(stack_dir, choose_iter, "res_MK.rds"))
+	find <- lapply(1:length(res), function(x){	
+
+		if(is.null(res[[x]]$df)==FALSE){
+			sub <- res[[x]]$Report
+			mle <- sub$D_t		
+
+			sdrep <- summary(res[[x]]$Sdreport)
+			sd <- sdrep[which(rownames(sdrep)=="lD_t"),2]
+		}
+		if(is.null(res[[x]]$df)){
+			mle <- rep(NA, 20)
+			sd <- rep(NA, 20)
+		}		
+			df <- data.frame("Node"=x, "Year"=1:length(mle), "MLE"=mle, "SE"=sd)
+			return(df)
+	})
+	find <- do.call(rbind, find)
+
+	yrs <- unique(find$Year)
+	stack <- sapply(yrs, function(x){
+		yrsub <- find %>% filter(Year==yrs[x])
+		stack <- sum(yrsub[,"MLE"] * weightsMK, na.rm=TRUE)
+	})	
+
+	# quant <- sapply(1:nrow(find), function(x){
+	# 	return(quantile(find[x,], prob=c(0.05,0.5,0.95)))
+	# })
+	plot(x=1, y=1, type="n", xlim=c(1,20), ylim=c(0,2), ylab="", xlab="", xaxt="n", las=2, xaxs="i", yaxs="i")
+	if(i==length(plot_iter)){
+		axis(1)
+		mtext(side=1, "Year", line=3)
+	}
+	## estimates for each node
+	for(x in 1:length(res)){
+		if(is.null(res[[x]]$df) == FALSE) sub <- res[[x]]$Report
+		lines(x=1:length(sub$D_t), y=sub$D_t, lwd=3, col="#AAAAAA80")
+	}	
+
+	# polygon(x=c(1:ncol(quant), ncol(quant):1), y=c(quant[1,], rev(quant[3,])), col="#55555550", border=NA)
+	# lines(x=1:ncol(quant), y=quant[2,], lwd=3, col="black")
+	true <- readRDS(file.path(stack_dir, choose_iter, "True.rds"))
+	mres <- readRDS(file.path(means_dir, choose_iter, "res_MK.rds"))
+	lines(x=1:length(true$D_t), y=true$D_t, col=col[1], lwd=3)
+	lines(x=1:length(mres[[1]]$Report$D_t), y=mres[[1]]$Report$D_t, col=col[2], lwd=3)
+	## predictive stacking
+	lines(x=1:length(stack), y=stack, col=col[3], lwd=3)
+	if(i==1) legend("topleft", legend=c("True", "FishLife Means", "Quadrature Nodes", "Predictive stacking"), col=c(col[1], col[2], "#AAAAAA80", col[3]), lwd=3)
+
+	plot(x=1, y=1, type="n", xaxs="i", yaxs="i", xlim=c(-1.5,2.5), ylim=c(0,2), ylab="", xaxt="n", yaxt="n", las=2)
+	axis(4, las=2)
+	if(i==length(plot_iter)){
+		axis(1)
+		mtext(side=1, "Relative spawning biomass\n in terminal year", line=4)
+	}
+	for(x in 1:length(res)){
+		sub <- find %>% filter(Node==x)
+		term <- sub %>% filter(Year==max(Year))
+		if(is.na(term[,"MLE"])==FALSE & is.na(term[,"SE"])==FALSE){
+			xx <- density(rnorm(10000, mean=(term[,"MLE"]), sd=term[,"SE"]))
+			polygon(x=c(xx$x, rev(xx$x)), y=c(xx$y, rep(0,length(xx$x))), col="#AAAAAA80", border="#222222")
+		}
+	}
+	abline(v=stack[length(stack)], col=col[3], lwd=4)
+	abline(v=true$D_t[length(true$D_t)], col=col[1], lwd=3)
+	abline(v=mres[[1]]$Report$D_t[length(stack)], col=col[2], lwd=3)
+}
+mtext(side=2, "Relative spawning biomass", outer=TRUE, line=4)
+mtext(side=4, "Density", outer=TRUE, line=4)
+dev.off()
 
 
 sprMK <- lapply(1:length(itervec), function(y){
@@ -248,7 +312,7 @@ sprMK <- lapply(1:length(itervec), function(y){
 
 	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
 	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
-	if(true != gen2$SPR) stop("Stack and mean true values don't match")
+	# if(true != gen2$SPR) stop("Stack and mean true values don't match")
 	if(is.null(res2[[1]]$df)){
 		est2 <- NA
 	} else {
@@ -274,7 +338,7 @@ fMK <- lapply(1:length(itervec), function(y){
 
 	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
 	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
-	if(true != gen2$F_t[length(gen2$F_t)]) stop("Stack and mean true values don't match")
+	# if(true != gen2$F_t[length(gen2$F_t)]) stop("Stack and mean true values don't match")
 	if(is.null(res2[[1]]$df)){
 		est2 <- NA
 	} else {
@@ -300,7 +364,7 @@ dMK <- lapply(1:length(itervec), function(y){
 
 	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
 	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
-	if(true != gen2$D_t[length(gen2$D_t)]) stop("Stack and mean true values don't match")
+	# if(true != gen2$D_t[length(gen2$D_t)]) stop("Stack and mean true values don't match")
 	if(is.null(res2[[1]]$df)){
 		est2 <- NA
 	} else {
@@ -312,70 +376,6 @@ dMK <- lapply(1:length(itervec), function(y){
 })
 dMK <- do.call(rbind, dMK)
 
-ffMK <- lapply(1:length(itervec), function(y){
-	res <- readRDS(file.path(stack_dir, itervec[y], "res_MK.rds"))
-	gen <- readRDS(file.path(stack_dir, itervec[y], "True.rds"))
-
-	est <- sapply(1:length(res), function(x){
-		if(is.null(res[[x]]$df)){
-			return(NA)
-		} else{
-			F30 <- uniroot(calc_ref, ages=res[[x]]$Inputs$Data$ages, Mat_a=res[[x]]$Inputs$Data$Mat_a, W_a=res[[x]]$Inputs$Data$W_a, M=res[[x]]$Inputs$Data$M, S_a=res[[x]]$Report$S_a, ref=0.3, interval=c(0,100))$root
-			FF30 <- res[[x]]$Report$F_t[length(res[[x]]$Report$F_t)]/F30
-			return(FF30)
-	}})
-	stack <- sum(est * weightsMK, na.rm=TRUE)
-
-	trueF30 <- uniroot(calc_ref, ages=gen$ages, Mat_a=gen$Mat_a, W_a=gen$W_a, M=gen$M, S_a=gen$S_a, ref=0.3, interval=c(0,100))$root
-	true <- gen$F_t[length(gen$F_t)]/trueF30
-
-	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
-	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
-	trueF302 <-  uniroot(calc_ref, ages=gen2$ages, Mat_a=gen2$Mat_a, W_a=gen2$W_a, M=gen2$M, S_a=gen2$S_a, ref=0.3, interval=c(0,100))$root
-	if(true != gen2$F_t[length(gen2$F_t)]/trueF302) stop("Stack and mean true values don't match")
-	F302 <- uniroot(calc_ref, ages=res2[[1]]$Inputs$Data$ages, Mat_a=res2[[1]]$Inputs$Data$Mat_a, W_a=res2[[1]]$Inputs$Data$W_a, M=res2[[1]]$Inputs$Data$M, S_a=res2[[1]]$Report$S_a, ref=0.3, interval=c(0,100))$root
-	if(is.null(res2[[1]]$df)){
-		est2 <- NA
-	} else {
-		est2 <- res2[[1]]$Report$F_t[length(res2[[1]]$Report$F_t)]/F302
-	}
-
-
-	out <- data.frame("Iteration" = y, "Estimate"=c(est, stack, est2), "True"=true, "Estimate_type"=c(rep("Estimate", length(est)), rep("Stacked", length(stack)), rep("Estimate_at_mean", length(est2))), "Value"="FF30", "Npar"=2)
-	return(out)
-})
-ffMK <- do.call(rbind, ffMK)
-
-frefMK <- lapply(1:length(itervec), function(y){
-	res <- readRDS(file.path(stack_dir, itervec[y], "res_MK.rds"))
-	gen <- readRDS(file.path(stack_dir, itervec[y], "True.rds"))
-
-	est <- sapply(1:length(res), function(x){
-		if(is.null(res[[x]]$df)){
-			return(NA)
-		} else{
-			F30 <- uniroot(calc_ref, ages=res[[x]]$Inputs$Data$ages, Mat_a=res[[x]]$Inputs$Data$Mat_a, W_a=res[[x]]$Inputs$Data$W_a, M=res[[x]]$Inputs$Data$M, S_a=res[[x]]$Report$S_a, ref=0.3, interval=c(0,100))$root
-			return(F30)
-	}})
-	stack <- sum(est * weightsMK, na.rm=TRUE)
-
-	trueF30 <- uniroot(calc_ref, ages=gen$ages, Mat_a=gen$Mat_a, W_a=gen$W_a, M=gen$M, S_a=gen$S_a, ref=0.3, interval=c(0,100))$root
-
-	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
-	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
-	trueF302 <-  uniroot(calc_ref, ages=gen2$ages, Mat_a=gen2$Mat_a, W_a=gen2$W_a, M=gen2$M, S_a=gen2$S_a, ref=0.3, interval=c(0,100))$root
-	if(trueF30 != trueF302) stop("Stack and mean true values don't match")
-	if(is.null(res2[[1]]$df)){
-		est2 <- NA
-	} else {
-	est2 <- uniroot(calc_ref, ages=res2[[1]]$Inputs$Data$ages, Mat_a=res2[[1]]$Inputs$Data$Mat_a, W_a=res2[[1]]$Inputs$Data$W_a, M=res2[[1]]$Inputs$Data$M, S_a=res2[[1]]$Report$S_a, ref=0.3, interval=c(0,100))$root
-	}
-
-	out <- data.frame("Iteration" = y, "Estimate"=c(est, stack, est2), "True"=true, "Estimate_type"=c(rep("Estimate", length(est)), rep("Stacked", length(stack)), rep("Estimate_at_mean", length(est2))), "Value"="F30", "Npar"=2)
-
-	return(out)
-})
-frefMK <- do.call(rbind, frefMK)
 
 
 par2 <- rbind(sprMK, dMK, fMK) %>%
@@ -389,6 +389,105 @@ write.csv(tpar2, file.path(figs, "RE_table_MK.csv"))
 
 
 p <- ggplot(par2) +
+	geom_violin(aes(x=Value, y=RE), colour="steelblue", fill="steelblue", scale="width") + 
+	facet_grid(Estimate_type ~ .) +
+	geom_hline(yintercept = 0, lwd=1.5, alpha=0.7) +
+	ylab("Relative error") + 
+	theme_lsd() +
+	coord_cartesian(ylim=c(-1,10))
+ggsave(file.path(figs, "RE_est_vs_stacked_MK.png"), p)
+
+
+sprMKL <- lapply(1:length(itervec), function(y){
+	res <- readRDS(file.path(stack_dir, itervec[y], "res_MKL.rds"))
+	gen <- readRDS(file.path(stack_dir, itervec[y], "True.rds"))
+	est <- sapply(1:length(res), function(x){
+		if(is.null(res[[x]]$df)){
+			return(NA)
+		} else{
+			return(res[[x]]$Report$SPR_t[length(res[[x]]$Report$SPR_t)])
+	}})
+	stack <- sum(est * weights3, na.rm=TRUE)
+	true <- gen$SPR
+
+	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
+	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
+	# if(true != gen2$SPR) stop("Stack and mean true values don't match")
+	if(is.null(res2[[1]]$df)){
+		est2 <- NA
+	} else {
+		est2 <- res2[[1]]$Report$SPR_t[length(res2[[1]]$Report$SPR_t)]
+	}
+
+	out <- data.frame("Iteration" = y, "Estimate"=c(est, stack, est2), "True"=true, "Estimate_type"=c(rep("Estimate", length(est)), rep("Stacked", length(stack)), rep("Estimate_at_mean", length(est2))), "Value"="SPR", "Npar"=2)
+	return(out)
+})
+sprMKL <- do.call(rbind, sprMKL) 
+
+fMKL <- lapply(1:length(itervec), function(y){
+	res <- readRDS(file.path(stack_dir, itervec[y], "res_MKL.rds"))
+	gen <- readRDS(file.path(stack_dir, itervec[y], "True.rds"))
+	est <- sapply(1:length(res), function(x){
+		if(is.null(res[[x]]$df)){
+			return(NA)
+		} else{
+			return(res[[x]]$Report$F_t[length(res[[x]]$Report$F_t)])
+	}})
+	stack <- sum(est * weights3, na.rm=TRUE)
+	true <- gen$F_t[length(gen$F_t)]
+
+	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
+	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
+	# if(true != gen2$F_t[length(gen2$F_t)]) stop("Stack and mean true values don't match")
+	if(is.null(res2[[1]]$df)){
+		est2 <- NA
+	} else {
+		est2 <- res2[[1]]$Report$F_t[length(res2[[1]]$Report$F_t)]
+	}
+	out <- data.frame("Iteration" = y, "Estimate"=c(est, stack, est2), "True"=true, "Estimate_type"=c(rep("Estimate", length(est)), rep("Stacked", length(stack)), rep("Estimate_at_mean", length(est2))), "Value"="F", "Npar"=2)
+
+	return(out)
+})
+fMKL <- do.call(rbind, fMKL)
+
+dMKL <- lapply(1:length(itervec), function(y){
+	res <- readRDS(file.path(stack_dir, itervec[y], "res_MKL.rds"))
+	gen <- readRDS(file.path(stack_dir, itervec[y], "True.rds"))
+	est <- sapply(1:length(res), function(x){
+		if(is.null(res[[x]]$df)){
+			return(NA)
+		} else{
+			return(res[[x]]$Report$D_t[length(res[[x]]$Report$D_t)])
+	}})
+	stack <- sum(est * weights3, na.rm=TRUE)
+	true <- gen$D_t[length(gen$D_t)]
+
+	res2 <- readRDS(file.path(means_dir, itervec[y], "res_MK.rds"))
+	gen2 <- readRDS(file.path(means_dir, itervec[y], "True.rds"))
+	# if(true != gen2$D_t[length(gen2$D_t)]) stop("Stack and mean true values don't match")
+	if(is.null(res2[[1]]$df)){
+		est2 <- NA
+	} else {
+		est2 <- res2[[1]]$Report$D_t[length(res2[[1]]$Report$D_t)]
+	}
+
+	out <- data.frame("Iteration" = y, "Estimate"=c(est, stack, est2), "True"=true, "Estimate_type"=c(rep("Estimate", length(est)), rep("Stacked", length(stack)), rep("Estimate_at_mean", length(est2))), "Value"="Depl", "Npar"=2)
+	return(out)
+})
+dMKL <- do.call(rbind, dMKL)
+
+
+par3 <- rbind(sprMKL, dMKL, fMKL) %>%
+		dplyr::mutate("RE"= (Estimate - True)/True)
+
+tpar3 <- par3 %>%
+		dplyr::group_by(Estimate_type, Value) %>%
+		dplyr::select(Estimate_type, Value, RE) %>%
+		dplyr::summarise_all(funs(mre=median(., na.rm=TRUE), mare=median(abs(.), na.rm=TRUE)))
+write.csv(tpar3, file.path(figs, "RE_table_MKL.csv"))
+
+
+p <- ggplot(par3) +
 	geom_violin(aes(x=Value, y=RE), colour="steelblue", fill="steelblue", scale="width") + 
 	facet_grid(Estimate_type ~ .) +
 	geom_hline(yintercept = 0, lwd=1.5, alpha=0.7) +

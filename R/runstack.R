@@ -1,21 +1,22 @@
 runstack <- function(savedir, iter, nodes, param, mean, cov, modname, rewrite){
 	iterpath <- file.path(savedir, itervec[iter])
 	dir.create(iterpath, showWarnings=FALSE)
-	
-	## true values
-	set.seed(iter)
-	vbk_choose <- ifelse("K" %in% param, exp(rnorm(1, mean=mean["K"], sd=sqrt(cov["K","K"]))), exp(mean["K"]))
-	M_choose <- ifelse("M" %in% param, exp(rnorm(1, mean=mean["M"], sd=sqrt(cov["M","M"]))), exp(mean["M"]))
-	Linf_choose <- ifelse("Loo" %in% param, exp(rnorm(1, mean=mean["Loo"], sd=sqrt(cov["Loo","Loo"]))), exp(mean["Loo"]))
-	plist <- create_lh_list(linf=Linf_choose, vbk=vbk_choose, t0=-1.77,
-							lwa=0.0076475, lwb=2.96,
-							M=M_choose,
-							M50=16.9, maturity_input="length",
-							S50=16.9, S95=42.6, selex_input="length",
-							SigmaF=0.2, SigmaR=0.737)
 
+	## generate data
 	if(rewrite==TRUE | file.exists(file.path(iterpath, "True.rds"))==FALSE){
-		## generate data
+
+		## true values
+		set.seed(iter)
+		vbk_choose <- ifelse("K" %in% param, rlnorm(1, mean=mean["K"], sd=sqrt(cov["K","K"])), exp(mean["K"]))
+		M_choose <- ifelse("M" %in% param, rlnorm(1, mean=mean["M"], sd=sqrt(cov["M","M"])), exp(mean["M"]))
+		Linf_choose <- ifelse("Loo" %in% param, rlnorm(1, mean=mean["Loo"], sd=sqrt(cov["Loo","Loo"])), exp(mean["Loo"]))
+		plist <- create_lh_list(linf=Linf_choose, vbk=vbk_choose, t0=-1.77,
+								lwa=0.0076475, lwb=2.96,
+								M=M_choose,
+								M50=16.9, maturity_input="length",
+								S50=16.9, S95=25, selex_input="length",
+								SigmaF=0.2, SigmaR=0.737)
+
 		data <- generate_data(modpath=savedir, itervec=iter, 
 						Fdynamics="Endogenous", Rdynamics="AR", 
 						lh=plist, 
