@@ -53,44 +53,27 @@ Plot_taxa( sp, mfrow=c(2,2) )
 dev.off()
 
 ## find species in database
-orders <- c("Class","Order","Family","Genus","Species")
-labels <- sapply(1:length(sp), function(x){
-	split <- strsplit(sp[x],"_")[[1]]
-	find <- which(split=="predictive")[1]
-	if(is.na(find)) return(orders[length(orders)])
-	if(is.na(find)==FALSE) return(orders[find-1])
-})
-Which <- sapply(1:length(sp), function(x) grep(sp[x], Return$ParentChild_gz[,"ChildName"]))
-Mean <- lapply(1:length(sp), function(x) Return$beta_gv[Which[x],])
-names(Mean) <- labels
-Cov <- lapply(1:length(sp), function(x) Return$Cov_gvv[Which[x],,])
-names(Cov) <- labels
-
+Which <- grep(sp[1], Return$ParentChild_gz[,"ChildName"])
+Mean <- Return$beta_gv[Which,]
+Cov <- Return$Cov_gvv[Which,,]
 
 ##################################################
 ###         nodes and weights - M 	   ###
 ###################################################
 
+
 # choose parameters
 param1 <- "M"
 
-grid1 <- lapply(1:length(sp), function(x){
-	grid <- createNIGrid(dim=1, type="GHe", level=4, ndConstruction="sparse")
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param1)]
-	csub <- Cov[[x]][which(rownames(Cov[[x]]) %in% param1), which(colnames(Cov[[x]]) %in% param1)]
-	mvQuad::rescale(grid, m=msub, C=(csub+t(csub))/2, dec.type=1)
-	return(grid)
-})
-names(grid1) <- labels
+grid1 <- createNIGrid(dim=1, type="GHe", level=4, ndConstruction="sparse")
+msub <- Mean[which(names(Mean) %in% param1)]
+csub <- Cov[which(rownames(Cov) %in% param1), which(colnames(Cov) %in% param1)]
+mvQuad::rescale(grid1, m=msub, C=(csub+t(csub))/2, dec.type=1)
 
+nodes1 <- getNodes(grid1)
+colnames(nodes1) <- names(msub)
 
-nodes1 <- lapply(1:length(sp), function(x){
-	snodes <- getNodes(grid1[[x]])
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param1)]
-	colnames(snodes) <- names(msub)
-	return(snodes)
-})
-names(nodes1) <- labels
+weights1 <- getWeights(grid1)
 
 ##################################################
 ###         nodes and weights - M and K 	   ###
@@ -99,87 +82,53 @@ names(nodes1) <- labels
 # choose parameters
 param2 <- c("K","M")
 
-grid2 <- lapply(1:length(sp), function(x){
-	grid <- createNIGrid(dim=2, type="GHe", level=4, ndConstruction="sparse")
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param2)]
-	csub <- Cov[[x]][which(rownames(Cov[[x]]) %in% param2), which(colnames(Cov[[x]]) %in% param2)]
-	mvQuad::rescale(grid, m=msub, C=(csub+t(csub))/2, dec.type=1)
-	return(grid)
-})
-names(grid2) <- labels
+grid2 <- createNIGrid(dim=2, type="GHe", level=4, ndConstruction="sparse")
+msub <- Mean[which(names(Mean) %in% param2)]
+csub <- Cov[which(rownames(Cov) %in% param2), which(colnames(Cov) %in% param2)]
+mvQuad::rescale(grid2, m=msub, C=(csub+t(csub))/2, dec.type=1)
 
+nodes2 <- getNodes(grid2)
+colnames(nodes2) <- names(msub)
 
-nodes2 <- lapply(1:length(sp), function(x){
-	snodes <- getNodes(grid2[[x]])
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param2)]
-	colnames(snodes) <- names(msub)
-	return(snodes)
-})
-names(nodes2) <- labels
+weights2 <- getWeights(grid2)
+
+uw <- unique(weights2)[order(unique(weights2))]
+cols <- rev(topo.colors(length(uw)))
+wcols <- sapply(1:nrow(weights2), function(x) cols[which(uw==weights2[x,1])])
+plot(nodes2[,"K"], nodes2[,"M"], col=wcols, pch=19)
 
 ##################################################
-###         nodes and weights - M and Linf 	   ###
+###         nodes and weights - Lm and Linf	   ###
 ###################################################
-
 # choose parameters
-param3 <- c("Lm","Loo","M")
+param2_v2 <- c("Lm","Loo")
 
-grid3 <- lapply(1:length(sp), function(x){
-	grid <- createNIGrid(dim=3, type="GHe", level=4, ndConstruction="sparse")
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param3)]
-	csub <- Cov[[x]][which(rownames(Cov[[x]]) %in% param3), which(colnames(Cov[[x]]) %in% param3)]
-	mvQuad::rescale(grid, m=msub, C=(csub+t(csub))/2, dec.type=1)
-	return(grid)
-})
-names(grid3) <- labels
+grid2_v2 <- createNIGrid(dim=2, type="GHe", level=4, ndConstruction="sparse")
+msub <- Mean[which(names(Mean) %in% param2_v2)]
+csub <- Cov[which(rownames(Cov) %in% param2_v2), which(colnames(Cov) %in% param2_v2)]
+mvQuad::rescale(grid2_v2, m=msub, C=(csub+t(csub))/2, dec.type=1)
 
-nodes3 <- lapply(1:length(sp), function(x){
-	snodes <- getNodes(grid3[[x]])
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param3)]
-	colnames(snodes) <- names(msub)
-	return(snodes)
-})
-names(nodes3) <- labels
+nodes2_v2 <- getNodes(grid2_v2)
+colnames(nodes2_v2) <- names(msub)
 
-nodes2_v2 <- lapply(1:length(nodes3), function(x){
-	sub <- nodes3[[x]]
-	M <- sub[,"M"]
-	LmLinf <- exp(sub[,"Lm"])/exp(sub[,"Loo"])
-	new <- cbind(M, LmLinf)
-	colnames(new) <- c("M", "LmLoo")
-	return(new)
-})
-names(nodes2_v2) <- labels
-
-param2_v2 <- c("M","Loo")
-
+weights2_v2 <- getWeights(grid2_v2)
 
 ###############################################################
 ###         nodes and weights - M and K, Linf, Lmat 	   ###
 ################################################################
 
-
 # choose parameters
-param4 <- c("Loo","K","M","Lm")
+param4 <- c("K","M","Lm","Loo")
 
-grid4 <- lapply(1:length(sp), function(x){
-	grid <- createNIGrid(dim=4, type="GHe", level=4, ndConstruction="sparse")
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param4)]
-	csub <- Cov[[x]][which(rownames(Cov[[x]]) %in% param4), which(colnames(Cov[[x]]) %in% param4)]
-	mvQuad::rescale(grid, m=msub, C=(csub+t(csub))/2, dec.type=1)
-	return(grid)
-})
-names(grid4) <- labels
+grid4 <- createNIGrid(dim=4, type="GHe", level=4, ndConstruction="sparse")
+msub <- Mean[which(names(Mean) %in% param4)]
+csub <- Cov[which(rownames(Cov) %in% param4), which(colnames(Cov) %in% param4)]
+mvQuad::rescale(grid4, m=msub, C=(csub+t(csub))/2, dec.type=1)
 
+nodes4 <- getNodes(grid4)
+colnames(nodes4) <- names(msub)
 
-nodes4 <- lapply(1:length(sp), function(x){
-	snodes <- getNodes(grid4[[x]])
-	msub <- Mean[[x]][which(names(Mean[[x]]) %in% param4)]
-	colnames(snodes) <- names(msub)
-	return(snodes)
-})
-names(nodes4) <- labels
-
+weights4 <- getWeights(grid4)
 
 
 #################################################
@@ -188,13 +137,12 @@ names(nodes4) <- labels
 
 itervec <- 1:100
 
-dir_1param <- file.path(res_dir, "param1_LBSPR")
-dir.create(dir_1param, showWarnings=FALSE)
+dir_M <- file.path(res_dir, "M")
+dir.create(dir_M, showWarnings=FALSE)
 
 	##################################
-	## species - LBSPR - 1parameters
+	## LBSPR - M
 	##################################
-	type <- "Species"	
 
 	## Simulate true data with species-level information
 	## Run all models with species-level distributions
@@ -203,12 +151,12 @@ dir.create(dir_1param, showWarnings=FALSE)
 	registerDoParallel(cl)			
 	start <- Sys.time()
 	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param, 
-					nodes=nodes1[[type]], 
+		runstack(savedir=dir_M, 
+					nodes=nodes1, 
 					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
+					mean=Mean, 
+					cov=Cov, 
+					modname="M_Species", 
 					simulation=TRUE, 
 					iter=loop, 
 					seed=loop, 
@@ -220,124 +168,17 @@ dir.create(dir_1param, showWarnings=FALSE)
 	end <- Sys.time() - start		
 	stopCluster(cl)
 
-	## calculate densities - LBSPR species
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param, 
-					modname=paste0("1param_",type), 
-					model="LBSPR", 
-					iter=loop, 
-					vals="SPR", 
-					nodes=nodes1[[type]],
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
-	stopCluster(cl)
-
-	####################
-	## genus - LBSPR
-	####################
-	type <- "Genus"		
-	## run LBSPR
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)	
-
-	start <- Sys.time()
-	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param, 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
-					simulation=TRUE, 
-					iter=loop, 
-					seed=loop, 
-					Fscenario="equil", 
-					rewrite=FALSE, 
-					model="LBSPR", 
-					sim_model="LIME",
-					Nyears=1)
-	end <- Sys.time() - start		
-	stopCluster(cl)
-
-	## calculate densities - LBSPR genus
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param, 
-					modname=paste0("1param_",type), 
-					model="LBSPR", 
-					iter=loop, 
+	mle_M_LBSPR <- 	stack_mle(savedir=dir_M,
+					modname="M_Species",
+					model="LBSPR",
+					nodes=nodes1,
+					weights=weights1,
 					vals="SPR",
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
-	stopCluster(cl)
-
-
-	####################
-	## Family - LBSPR
-	####################
-	type <- "Family"		
-	## run LBSPR
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)			
-	start <- Sys.time()
-	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param, 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
-					simulation=TRUE, 
-					iter=loop, 
-					seed=loop, 
-					Fscenario="equil", 
-					rewrite=FALSE, 
-					model="LBSPR", 
-					sim_model="LIME",
-					Nyears=1)
-	end <- Sys.time() - start		
-	stopCluster(cl)
-
-	## calculate densities - LBSPR genus
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param, 
-					modname=paste0("1param_",type), 
-					model="LBSPR", 
-					iter=loop, 
-					vals="SPR",
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
-	stopCluster(cl)
-
-
-dir_1param2 <- file.path(res_dir, "param1_LIME")
-dir.create(dir_1param2, showWarnings=FALSE)
+					itervec=itervec)
 
 	##################################
-	## species - LIME - 1parameters
+	## LIME - M
 	##################################
-	type <- "Species"	
 
 	## Simulate true data with species-level information
 	## Run all models with species-level distributions
@@ -346,12 +187,12 @@ dir.create(dir_1param2, showWarnings=FALSE)
 	registerDoParallel(cl)			
 	start <- Sys.time()
 	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param2, 
-					nodes=nodes1[[type]], 
+		runstack(savedir=dir_M, 
+					nodes=nodes1, 
 					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
+					mean=Mean, 
+					cov=Cov, 
+					modname="M_Species", 
 					simulation=TRUE, 
 					iter=loop, 
 					seed=loop, 
@@ -363,88 +204,89 @@ dir.create(dir_1param2, showWarnings=FALSE)
 	end <- Sys.time() - start		
 	stopCluster(cl)
 
-	## calculate densities - LIMIE species
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param2, 
-					modname=paste0("1param_",type), 
-					model="LIME", 
-					iter=loop, 
-					vals=c("Depletion","SPR"), 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
-	stopCluster(cl)
+	mle_M_LIME <- 	stack_mle(savedir=dir_M,
+					modname="M_Species",
+					model="LIME",
+					nodes=nodes1,
+					weights=weights1,
+					vals=c("SPR","BB0"),
+					itervec=itervec)
+
+M_mle <- rbind.data.frame(mle_M_LBSPR, mle_M_LIME) %>% mutate("RunOption"="Stacking_M")
+
+pspr <- ggplot(mle %>% filter(Value=="SPR")) + 
+	geom_violin(aes(x=Model, y=RE, color=Model, fill=Model)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+pbb <- ggplot(mle %>% filter(Model=="LIME")) + 
+	geom_violin(aes(x=Value, y=RE, color=Value, fill=Value)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
 
 
-	####################
-	## genus - LIME
-	####################
-	type <- "Genus"		
-	## run LIME
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)	
+#################################################
+##       Run models - M and K         	  ###
+#################################################
 
-	start <- Sys.time()
-	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param2, 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
-					simulation=TRUE, 
-					iter=loop, 
-					seed=loop, 
-					Fscenario="equil", 
-					rewrite=FALSE, 
-					model="LIME", 
-					sim_model="LIME",
-					Nyears=1)
-	end <- Sys.time() - start		
-	stopCluster(cl)
+itervec <- 1:100
 
-	## calculate densities - LIME genus
-	ncores <- 5
-	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param2, 
-					modname=paste0("1param_",type), 
-					model="LIME", 
-					iter=loop, 
-					vals=c("Depletion","SPR"), 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
-	stopCluster(cl)
+dir_MK <- file.path(res_dir, "MK")
+dir.create(dir_MK, showWarnings=FALSE)
 
+	##################################
+	## LBSPR 
+	##################################
 
-	####################
-	## Family - LIME
-	####################
-	type <- "Family"		
-	## run LIME
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
 	ncores <- 5
 	cl <- makeCluster(ncores)
 	registerDoParallel(cl)			
 	start <- Sys.time()
 	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
-		runstack(savedir=dir_1param2, 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]], 
-					modname=paste0("1param_",type), 
+		runstack(savedir=dir_MK, 
+					nodes=nodes2, 
+					param=param2, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="MK_Species", 
+					simulation=TRUE, 
+					iter=loop, 
+					seed=loop, 
+					Fscenario="equil", 
+					rewrite=FALSE, 
+					model="LBSPR", 
+					sim_model="LIME",
+					Nyears=1)
+	end <- Sys.time() - start		
+	stopCluster(cl)
+
+	mle_MK_LBSPR <- stack_mle(savedir=dir_MK,
+					modname="MK_Species",
+					model="LBSPR",
+					nodes=nodes2,
+					weights=weights2,
+					vals="SPR",
+					itervec=itervec)
+
+	##################################
+	## LIME
+	##################################
+
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
+	ncores <- 5
+	cl <- makeCluster(ncores)
+	registerDoParallel(cl)			
+	start <- Sys.time()
+	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
+		runstack(savedir=dir_MK, 
+					nodes=nodes2, 
+					param=param2, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="MK_Species", 
 					simulation=TRUE, 
 					iter=loop, 
 					seed=loop, 
@@ -456,23 +298,240 @@ dir.create(dir_1param2, showWarnings=FALSE)
 	end <- Sys.time() - start		
 	stopCluster(cl)
 
-	## calculate densities - LIME genus
+	mle_MK_LIME <- 	stack_mle(savedir=dir_MK,
+					modname="MK_Species",
+					model="LIME",
+					nodes=nodes2,
+					weights=weights2,
+					vals=c("SPR","BB0"),
+					itervec=itervec)
+
+MK_mle <- rbind.data.frame(mle_MK_LBSPR, mle_MK_LIME) %>% mutate("RunOption"="Stacking_M")
+
+pspr <- ggplot(MK_mle %>% filter(Value=="SPR")) + 
+	geom_violin(aes(x=Model, y=RE, color=Model, fill=Model)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+pbb <- ggplot(MK_mle %>% filter(Model=="LIME")) + 
+	geom_violin(aes(x=Value, y=RE, color=Value, fill=Value)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+
+#################################################
+##       Run models - Lm and Linf        	  ###
+#################################################
+
+itervec <- 1:100
+
+dir_LmLinf <- file.path(res_dir, "LmLinf")
+dir.create(dir_LmLinf, showWarnings=FALSE)
+
+	##################################
+	## LBSPR
+	##################################
+
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
 	ncores <- 5
 	cl <- makeCluster(ncores)
-	registerDoParallel(cl)		
-	foreach(loop=itervec, .packages=c('dplyr', 'mvtnorm', 'Hmisc')) %dopar% 
-		stackdensity(savedir=dir_1param2, 
-					modname=paste0("1param_",type), 
-					model="LIME", 
+	registerDoParallel(cl)			
+	start <- Sys.time()
+	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
+		runstack(savedir=dir_LmLinf, 
+					nodes=nodes2_v2, 
+					param=param2_v2, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="LmLinf_Species", 
+					simulation=TRUE, 
 					iter=loop, 
-					vals=c("Depletion","SPR"), 
-					nodes=nodes1[[type]], 
-					param=param1, 
-					mean=Mean[[type]], 
-					cov=Cov[[type]],
-					rewrite=TRUE,
-					rewrite_summary=TRUE)
+					seed=loop, 
+					Fscenario="equil", 
+					rewrite=FALSE, 
+					model="LBSPR", 
+					sim_model="LIME",
+					Nyears=1)
+	end <- Sys.time() - start		
 	stopCluster(cl)
+
+	mle_LmLinf_LBSPR <- stack_mle(savedir=dir_LmLinf,
+					modname="LmLinf_Species",
+					model="LBSPR",
+					nodes=nodes2_v2,
+					weights=weights2_v2,
+					vals="SPR",
+					itervec=itervec)
+
+	##################################
+	## LIME
+	##################################
+
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
+	ncores <- 5
+	cl <- makeCluster(ncores)
+	registerDoParallel(cl)			
+	start <- Sys.time()
+	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
+		runstack(savedir=dir_LmLinf, 
+					nodes=nodes2_v2, 
+					param=param2_v2, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="LmLinf_Species", 
+					simulation=TRUE, 
+					iter=loop, 
+					seed=loop, 
+					Fscenario="equil", 
+					rewrite=FALSE, 
+					model="LIME", 
+					sim_model="LIME",
+					Nyears=1)
+	end <- Sys.time() - start		
+	stopCluster(cl)
+
+	mle_LmLinf_LIME <- 	stack_mle(savedir=dir_LmLinf,
+					modname="LmLinf_Species",
+					model="LIME",
+					nodes=nodes2_v2,
+					weights=weights2_v2,
+					vals=c("SPR","BB0"),
+					itervec=itervec)
+
+LmLinf_mle <- rbind.data.frame(mle_LmLinf_LBSPR, mle_LmLinf_LIME) %>% mutate("RunOption"="Stacking_M")
+
+pspr <- ggplot(LmLinf_mle %>% filter(Value=="SPR")) + 
+	geom_violin(aes(x=Model, y=RE, color=Model, fill=Model)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+pbb <- ggplot(LmLinf_mle %>% filter(Model=="LIME")) + 
+	geom_violin(aes(x=Value, y=RE, color=Value, fill=Value)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+
+#################################################
+##       Run models - 4 parameters        	  ###
+#################################################
+
+itervec <- 1:100
+
+dir_4param <- file.path(res_dir, "4param")
+dir.create(dir_4param, showWarnings=FALSE)
+
+	##################################
+	## LBSPR 
+	##################################
+
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
+	ncores <- 5
+	cl <- makeCluster(ncores)
+	registerDoParallel(cl)			
+	start <- Sys.time()
+	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
+		runstack(savedir=dir_4param, 
+					nodes=nodes4, 
+					param=param4, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="4param_Species", 
+					simulation=TRUE, 
+					iter=loop, 
+					seed=loop, 
+					Fscenario="equil", 
+					rewrite=FALSE, 
+					model="LBSPR", 
+					sim_model="LIME",
+					Nyears=1)
+	end <- Sys.time() - start		
+	stopCluster(cl)
+
+	mle_4_LBSPR <- stack_mle(savedir=dir_4param,
+					modname="4param_Species",
+					model="LBSPR",
+					nodes=nodes4,
+					weights=weights4,
+					vals="SPR",
+					itervec=itervec)
+
+	savedir=dir_4param
+					modname="4param_Species"
+					model="LBSPR"
+					nodes=nodes4
+					weights=weights4
+					vals="SPR"
+					itervec=itervec
+
+	##################################
+	## LIME
+	##################################
+
+	## Simulate true data with species-level information
+	## Run all models with species-level distributions
+	ncores <- 5
+	cl <- makeCluster(ncores)
+	registerDoParallel(cl)			
+	start <- Sys.time()
+	foreach(loop=itervec, .packages=c('TMB','LIME','LBSPR','mvtnorm')) %dopar% 
+		runstack(savedir=dir_4param, 
+					nodes=nodes4, 
+					param=param4, 
+					mean=Mean, 
+					cov=Cov, 
+					modname="4param_Species", 
+					simulation=TRUE, 
+					iter=loop, 
+					seed=loop, 
+					Fscenario="equil", 
+					rewrite=FALSE, 
+					model="LIME", 
+					sim_model="LIME",
+					Nyears=1)
+	end <- Sys.time() - start		
+	stopCluster(cl)
+
+	mle_4_LIME <- 	stack_mle(savedir=dir_4param,
+					modname="4param_Species",
+					model="LIME",
+					nodes=nodes4,
+					weights=weights4,
+					vals=c("SPR","BB0"),
+					itervec=itervec)
+
+4_mle <- rbind.data.frame(mle_4_LBSPR, mle_4_LIME) %>% mutate("RunOption"="Stacking_M")
+
+pspr <- ggplot(mle_4_LBSPR %>% filter(Value=="SPR")) + 
+	geom_violin(aes(x=Model, y=RE, color=Model, fill=Model)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+pbb <- ggplot(4_mle %>% filter(Model=="LIME")) + 
+	geom_violin(aes(x=Value, y=RE, color=Value, fill=Value)) +
+	geom_hline(aes(yintercept=0), lwd=1) +
+	theme_lsd()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #################################################
