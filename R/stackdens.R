@@ -48,6 +48,14 @@ stackdensity <- function(savedir, modname, model, iter, vals, nodes, param, mean
 			true <- readRDS(file.path(iterpath, "True.rds"))
 		}
 
+		fnodes <- sapply(1:length(pres), function(x) pres[[x]]@SPR)
+		sum( fnodes * weights )
+
+
+
+
+
+
 		if(rewrite==TRUE | file.exists(file.path(iterpath, paste0("results_summary_", modname,"_", model, ".rds")))==FALSE){
 
 		node_results <- list()
